@@ -1,0 +1,302 @@
+C51 COMPILER V9.50a   M25P80                                                               05/17/2019 16:38:39 PAGE 1   
+
+
+C51 COMPILER V9.50a, COMPILATION OF MODULE M25P80
+OBJECT MODULE PLACED IN .\Objects\m25p80.obj
+COMPILER INVOKED BY: D:\KEIL4\C51\BIN\C51.EXE src\m25p80.c BROWSE DEBUG OBJECTEXTEND PRINT(.\Listings\m25p80.lst) TABS(2
+                    -) OBJECT(.\Objects\m25p80.obj)
+
+line level    source
+
+   1          /*
+   2           * Copyright        : Shendong MCU studio
+   3           * File Description : SPI protocol and M25P80 Flash driver
+   4           * Created          : oliverzhang@shendongmcu.com
+   5           */
+   6          #include "global.h"
+   7          
+   8          sbit SPI_FLASH_CS = P6^1;
+   9          
+  10          #define EEPCMD_WREN        0x06u /*Write Enable*/
+  11          #define EEPCMD_WRDI        0x04u /*Write Disable*/
+  12          #define EEPCMD_RDSR        0x05u /*Read Status Reg*/
+  13          #define EEPCMD_WRSR        0x01u /*Write Status Reg*/
+  14          #define EEPCMD_READ        0x03u /*Read*/
+  15          #define EEPCMD_FASTREAD    0x0bu /*Fast Read*/
+  16          #define EEPCMD_PP          0x02u /*Page Program*/
+  17          #define EEPCMD_SE          0xd8u /*Sector Erase*/
+  18          #define EEPCMD_BE          0xc7u /*Bulk Erase*/
+  19          #define EEPCMD_DP          0xb9u /*Deep Powerdown*/
+  20          #define EEPCMD_RES         0xabu /*Release from power down.*/
+  21          
+  22          #define SpiFlashDeselect() do{SPI_FLASH_CS = 1;}while(0)
+  23          #define SpiFlashSelect()  do{SPI_FLASH_CS = 0;}while(0)
+  24          
+  25          static void Delay1us()
+  26          {
+  27   1        _nop_();
+  28   1        _nop_();
+  29   1        _nop_();
+  30   1      }
+  31          
+  32          /*SPR1 SPR0 @11.0592MHZ
+  33           *  0    0  2.76MHZ     
+  34           *  0    1  0.6912MHZ   691.2KHZ
+  35           *  1    0  0.1728MHZ   172.8KHZ
+  36           *  1    1  0.0864MHZ   86.4KHZ
+  37          **/
+  38          void spi_Initialization(uint8_t speed)
+  39          {
+  40   1        speed &= 0x03u;
+  41   1        /*Configure SPI to drive M25P80*/
+  42   1        SPCTL = 0xdc | speed; /*SSIG SPEN DORD MSTR CPOL CPHA SPR1 SPR0*/
+  43   1                /*  1    1    0    1    0    0    0    0 */
+  44   1                /*Ignore SS pin,Enable SPI, MSB first,CPOL =0,CPHA = 0,
+  45   1            clock rate = 1/4 CPU_clk*/
+  46   1        
+  47   1        SPSTAT = 0xc0;  /*clear SPIF WCOL flags.*/
+  48   1      }
+  49          void spi_SetSpeed(uint8_t speed)
+  50          {
+  51   1        speed &= 0x03u;
+  52   1        /*Configure SPI to drive M25P80*/
+  53   1        SPCTL = 0xdc | speed; /*SSIG SPEN DORD MSTR CPOL CPHA SPR1 SPR0*/
+  54   1                /*  1    1    0    1    0    0    0    0 */
+C51 COMPILER V9.50a   M25P80                                                               05/17/2019 16:38:39 PAGE 2   
+
+  55   1                /*Ignore SS pin,Enable SPI, MSB first,CPOL =0,CPHA = 0,clock rate = 1/4 CPU_clk*/
+  56   1      }
+  57          uint8_t spi_ExchangeByte(uint8_t val)
+  58          {
+  59   1        SPDAT = val;
+  60   1        while((SPSTAT & 0x80) == 0);
+  61   1        SPSTAT = 0x80;
+  62   1        //if(SPSTAT & 0x40) printf("SPI Err");
+  63   1        return SPDAT;
+  64   1      }
+  65          static void StartCommand(uint8_t cmd)
+  66          {
+  67   1        SpiFlashSelect();
+  68   1        Delay1us();
+  69   1        spi_ExchangeByte(cmd);
+  70   1      }
+  71          
+  72          static void EndCommand(void)
+  73          {
+  74   1        SpiFlashDeselect();
+  75   1        Delay1us();
+  76   1      }
+  77          
+  78          static uint8_t xdata g_eep_error = 0;
+  79          static void BusyWait(void)
+  80          {
+  81   1        uint8_t val;
+  82   1        uint32_t i;
+  83   1        for(i=0; i<4000ul;i++)
+  84   1        {
+  85   2          StartCommand(EEPCMD_RDSR);
+  86   2          val = spi_ExchangeByte(0);
+  87   2          EndCommand();
+  88   2          if((val & 0x01) == 0) return;
+  89   2          time_HoggingDelayMs(1);
+  90   2          if(i % 10 == 0) {/*sys_FeedingWatchdog();*/}
+  91   2        }
+  92   1        if(g_eep_error < 10) g_eep_error++;
+  93   1        printf("EEP fatal error.");
+  94   1      }
+  95          
+  96          static void WriteEnable(void)
+  97          {
+  98   1        uint8_t val;
+  99   1        uint32_t i;
+ 100   1      
+ 101   1        BusyWait();
+ 102   1        StartCommand(EEPCMD_WREN);
+ 103   1        EndCommand();
+ 104   1        for(i=0;i<4000ul;i++)
+ 105   1        {
+ 106   2          StartCommand(EEPCMD_RDSR);
+ 107   2          val = spi_ExchangeByte(0);
+ 108   2          EndCommand();
+ 109   2          if(val & 0x02) return;
+ 110   2          time_HoggingDelayMs(1);
+ 111   2          if(i % 10 == 0){/*sys_FeedingWatchdog();*/}
+ 112   2        }
+ 113   1        if(g_eep_error < 10) g_eep_error++;
+ 114   1        printf("WriteEnable:EEP fatal error.");
+ 115   1      }
+ 116          
+C51 COMPILER V9.50a   M25P80                                                               05/17/2019 16:38:39 PAGE 3   
+
+ 117          static void WriteStatusReg(uint8_t comm)
+ 118          {
+ 119   1        BusyWait();
+ 120   1        WriteEnable();
+ 121   1      
+ 122   1        StartCommand(EEPCMD_WRSR);
+ 123   1        spi_ExchangeByte(comm);
+ 124   1        EndCommand();
+ 125   1      }
+ 126          
+ 127          static void SectorErase(uint32_t addr)
+ 128          {
+ 129   1        BusyWait();
+ 130   1        WriteEnable();
+ 131   1      
+ 132   1        StartCommand(EEPCMD_SE);
+ 133   1        spi_ExchangeByte(addr >> 16);
+ 134   1        spi_ExchangeByte(addr >> 8);
+ 135   1        spi_ExchangeByte(addr >> 0);
+ 136   1        EndCommand();
+ 137   1      }
+ 138          #if 0
+              static void WriteDisable(void)
+              {
+                BusyWait();
+                StartCommand(EEPCMD_WRDI);
+                EndCommand();
+              }
+              
+              static void BulkErase(void)
+              {
+                BusyWait();
+                WriteEnable();
+              
+                StartCommand(EEPCMD_BE);
+                EndCommand();
+              }
+              
+              static uint8_t ReadSignature(void)
+              {
+                uint8_t val;
+                StartCommand(EEPCMD_RES);
+                spi_ExchangeByte(0);
+                spi_ExchangeByte(0);
+                spi_ExchangeByte(0);
+                val = spi_ExchangeByte(0);
+                EndCommand();
+                return val;
+              }
+              #endif
+ 167          static void PageProgram(uint16_t page,uint16_t offset,const uint8_t *buffer, uint16_t size) large
+ 168          {
+ 169   1        uint16_t i;
+ 170   1        uint32_t addr;
+ 171   1      
+ 172   1        addr = (((uint32_t)page)<<8) + offset;
+ 173   1        if((addr & 0xffff) == 0) SectorErase(addr);
+ 174   1        BusyWait();
+ 175   1        WriteEnable();
+ 176   1        StartCommand(EEPCMD_PP);
+ 177   1        spi_ExchangeByte(addr >> 16);
+ 178   1        spi_ExchangeByte(addr >> 8);
+C51 COMPILER V9.50a   M25P80                                                               05/17/2019 16:38:39 PAGE 4   
+
+ 179   1        spi_ExchangeByte(addr >> 0);
+ 180   1        for(i=0 ; i<size; i++) spi_ExchangeByte(buffer[i]);
+ 181   1        EndCommand();
+ 182   1      }
+ 183          
+ 184          void m25p80_Initialization(void)
+ 185          {
+ 186   1        spi_Initialization(SPI_SPEED_MOSTFAST);
+ 187   1        WriteStatusReg(0x00);
+ 188   1        spi_SetSpeed(SPI_SPEED_MOSTFAST);
+ 189   1      }
+ 190          
+ 191          static char xdata g_virtual_eep[10];
+ 192          void m25p80_Write(const void *vbuf, uint16_t len, uint32_t eep_addr) large
+ 193          {
+ 194   1        const uint8_t * buffer = (const uint8_t *)vbuf;
+ 195   1        uint16_t page,startpos;
+ 196   1        uint16_t nleft,nwrite;
+ 197   1      
+ 198   1        if(g_eep_error >= 10)
+ 199   1        {
+ 200   2          if(len < sizeof(g_virtual_eep)) memcpy(g_virtual_eep,vbuf,len);
+ 201   2          return;
+ 202   2        }
+ 203   1        page = eep_addr / 256;
+ 204   1        startpos = eep_addr % 256;
+ 205   1        nleft=len;
+ 206   1        for(;nleft;)
+ 207   1        {
+ 208   2          if(nleft <= 256 - startpos)
+ 209   2            nwrite = nleft;
+ 210   2          else
+ 211   2            nwrite = 256 - startpos;
+ 212   2          PageProgram(page,startpos,buffer,nwrite);
+ 213   2          buffer += nwrite;
+ 214   2          nleft -= nwrite;
+ 215   2          page ++;
+ 216   2          startpos=0;
+ 217   2        }
+ 218   1      }
+ 219          
+ 220          /*for MSP430 sizeof(void *) == 2 !!!  16 bit pointer */
+ 221          void m25p80_Read(void *vbuf, uint16_t len, /*void * */uint32_t eep_addr)
+ 222          {
+ 223   1        uint16_t i;
+ 224   1        uint8_t *buf = (uint8_t *)vbuf;
+ 225   1      
+ 226   1        if(g_eep_error >= 10)
+ 227   1        {
+ 228   2          if(len < sizeof(g_virtual_eep)) memcpy(vbuf,g_virtual_eep,len);
+ 229   2          return;
+ 230   2        }
+ 231   1        BusyWait();
+ 232   1        StartCommand(EEPCMD_READ);
+ 233   1        spi_ExchangeByte(eep_addr >> 16);
+ 234   1        spi_ExchangeByte(eep_addr >> 8);
+ 235   1        spi_ExchangeByte(eep_addr >> 0);
+ 236   1        for(i=0 ; i<len; i++)
+ 237   1        {
+ 238   2          buf[i]=spi_ExchangeByte(0);
+ 239   2        }
+ 240   1        EndCommand();
+C51 COMPILER V9.50a   M25P80                                                               05/17/2019 16:38:39 PAGE 5   
+
+ 241   1      }
+ 242          
+ 243          void m25p80_EraseChip(void)
+ 244          {
+ 245   1        uint32_t secaddr;
+ 246   1        if(g_eep_error >= 10)return;
+ 247   1        for(secaddr=0;secaddr<0xffffful;secaddr+=0x10000ul)
+ 248   1        {
+ 249   2          SectorErase(secaddr);
+ 250   2        }
+ 251   1      }
+ 252          
+ 253          void m25p80_TestMain(uint8_t argc, char *argv[])
+ 254          {
+ 255   1        const char code *str = "Hello world. Now Test M25P80 read/write/erase function.";
+ 256   1        char xdata buf[64];
+ 257   1        
+ 258   1        argc = argc;
+ 259   1        argv = argv;
+ 260   1        memset(buf,0,sizeof(buf));
+ 261   1        printf("Begin Erase M25P80.\r\n");
+ 262   1        m25p80_EraseChip();
+ 263   1        printf("Erase M25P80 End. then write:\r\n");
+ 264   1        m25p80_Write(str,strlen(str)+1,0x500);
+ 265   1        m25p80_Read(buf,sizeof(buf),0x500);
+ 266   1        buf[sizeof(buf)-1] = 0;
+ 267   1        printf("Content read back:\r\n");
+ 268   1        printf("%s\r\n",buf);
+ 269   1      }
+ 270          
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   1177    ----
+   CONSTANT SIZE    =    182    ----
+   XDATA SIZE       =     11      95
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----      31
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

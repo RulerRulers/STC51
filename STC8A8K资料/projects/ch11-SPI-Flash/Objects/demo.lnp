@@ -1,0 +1,15 @@
+".\Objects\ir.obj",
+".\Objects\key.obj",
+".\Objects\led.obj",
+".\Objects\main.obj",
+".\Objects\time.obj",
+".\Objects\uart1.obj",
+".\Objects\STARTUP.obj",
+".\Objects\console.obj",
+".\Objects\util.obj",
+".\Objects\rtc.obj",
+".\Objects\eeprom.obj",
+".\Objects\m25p80.obj",
+".\Objects\xmodem.obj" 
+TO ".\Objects\demo" 
+PRINT(".\Listings\demo.m51") RAMSIZE(256) 

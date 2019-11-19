@@ -1,0 +1,89 @@
+C51 COMPILER V9.50a   MAIN                                                                 05/17/2019 08:50:52 PAGE 1   
+
+
+C51 COMPILER V9.50a, COMPILATION OF MODULE MAIN
+OBJECT MODULE PLACED IN .\Objects\main.obj
+COMPILER INVOKED BY: D:\KEIL4\C51\BIN\C51.EXE src\main.c BROWSE DEBUG OBJECTEXTEND PRINT(.\Listings\main.lst) TABS(2) OB
+                    -JECT(.\Objects\main.obj)
+
+line level    source
+
+   1          /*
+   2           * Copyright        : Shendong mcu studio
+   3           * File Description : Main Cotntrol Loop.
+   4           * Created          : by oliverzhang@shendongmcu.com
+   5           */
+   6          
+   7          #include "global.h"
+   8          
+   9          static void InitSTC8A(void)
+  10          {
+  11   1        P0M1 = 0x00;
+  12   1        P0M0 = 0x00;
+  13   1        P1M1 = 0x00;
+  14   1        P1M0 = 0x00;
+  15   1        P2M1 = 0x00;
+  16   1        P2M0 = 0x00;
+  17   1        P3M1 = 0x00;
+  18   1        P3M0 = 0x00;
+  19   1        P4M1 = 0x00;
+  20   1        P4M0 = 0x00;
+  21   1        P5M1 = 0x00;
+  22   1        P5M0 = 0x00;
+  23   1        P6M1 = 0x00;
+  24   1        P6M0 = 0x00;
+  25   1        P7M1 = 0x00;
+  26   1        P7M0 = 0x00;
+  27   1      }
+  28          
+  29          void ProcessKey(void)
+  30          {
+  31   1        static unsigned char idata flash_mode = 0;
+  32   1        unsigned char ret,keycode,keystate;
+  33   1        
+  34   1        ret = key_GetKeyCode(&keycode, &keystate);
+  35   1        if(ret == 0) return;
+  36   1        //printf("Running.\r\n");
+  37   1        if(keycode == KEY_SET && keystate == KEY_PRESSED)
+  38   1        {
+  39   2          flash_mode++;
+  40   2          if(flash_mode > 2) flash_mode = 0;
+  41   2          led_SetFlashMode(flash_mode);
+  42   2        }
+  43   1        printf("keycode=%bu keystate=%bu\r\n",keycode,keystate);
+  44   1      }
+  45          
+  46          void main(void)
+  47          {
+  48   1        InitSTC8A();
+  49   1        time_HoggingDelayMs(1000);
+  50   1        time_HoggingDelayUs(1);
+  51   1        time_Initialization();
+  52   1        led_Initialization();
+  53   1        key_Initialization();
+  54   1        uart1_Initialization();
+C51 COMPILER V9.50a   MAIN                                                                 05/17/2019 08:50:52 PAGE 2   
+
+  55   1        printf("Hello world.\r\n");
+  56   1        EA = 1;
+  57   1        for(;;)
+  58   1        {
+  59   2          led_Task();
+  60   2          key_Task();
+  61   2          ProcessKey();
+  62   2        }
+  63   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    148    ----
+   CONSTANT SIZE    =     42    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----       2
+   IDATA SIZE       =      1    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

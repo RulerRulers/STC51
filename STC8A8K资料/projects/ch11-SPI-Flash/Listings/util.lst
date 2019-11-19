@@ -1,0 +1,103 @@
+C51 COMPILER V9.50a   UTIL                                                                 05/17/2019 16:38:39 PAGE 1   
+
+
+C51 COMPILER V9.50a, COMPILATION OF MODULE UTIL
+OBJECT MODULE PLACED IN .\Objects\util.obj
+COMPILER INVOKED BY: D:\KEIL4\C51\BIN\C51.EXE src\util.c BROWSE DEBUG OBJECTEXTEND PRINT(.\Listings\util.lst) TABS(2) OB
+                    -JECT(.\Objects\util.obj)
+
+line level    source
+
+   1          /*
+   2           * Copyright        : Shendong MCU studio
+   3           * File Description : Help utilities
+   4           * Created          : oliverzhang@shendongmcu.com
+   5           */
+   6          
+   7          #include "global.h"
+   8          
+   9          /**
+  10          * strpbrk - Find the first occurrence of a set of characters
+  11          * @cs: The string to be searched
+  12          * @ct: The characters to search for
+  13          */
+  14          char *strpbrk(const char *cs, const char *ct)
+  15          {
+  16   1        const char *sc1, *sc2;
+  17   1      
+  18   1        for (sc1 = cs; *sc1 != '\0'; ++sc1) {
+  19   2          for (sc2 = ct; *sc2 != '\0'; ++sc2) {
+  20   3            if (*sc1 == *sc2)
+  21   3              return (char *)sc1;
+  22   3          }
+  23   2        }
+  24   1        return NULL;
+  25   1      }
+  26          
+  27          /**
+  28          * strsep - Split a string into tokens
+  29          * @s: The string to be searched
+  30          * @ct: The characters to search for
+  31          *
+  32          * strsep() updates @s to point after the token, ready for the next call.
+  33          *
+  34          * It returns empty tokens, too, behaving exactly like the libc function
+  35          * of that name. In fact, it was stolen from glibc2 and de-fancy-fied.
+  36          * Same semantics, slimmer shape. ;)
+  37          */
+  38          
+  39          char *strsep(char **s, const char *ct)
+  40          {
+  41   1        char *sbegin = *s;
+  42   1        char *end;
+  43   1      
+  44   1        if (sbegin == NULL)
+  45   1          return NULL;
+  46   1      
+  47   1        end = strpbrk(sbegin, ct);
+  48   1        if (end)
+  49   1          *end++ = '\0';
+  50   1        *s = end;
+  51   1        return sbegin;
+  52   1      }
+  53          
+  54          /*CCITT: 0x11021: X^16 + X^12 + X^5 + 1, implemented nibble by nibble version*/
+C51 COMPILER V9.50a   UTIL                                                                 05/17/2019 16:38:39 PAGE 2   
+
+  55          uint16_t crc_CalcCCITT16NibbleVer(void *vptr, uint16_t len) 
+  56          {
+  57   1        uint8_t *ptr = (uint8_t *)vptr;
+  58   1        uint16_t crc;
+  59   1        uint8_t da;
+  60   1        const uint16_t code crc_ta[16]= {
+  61   1          0x0000,0x1021,0x2042,0x3063,0x4084,0x50a5,0x60c6,0x70e7,
+  62   1          0x8108,0x9129,0xa14a,0xb16b,0xc18c,0xd1ad,0xe1ce,0xf1ef,
+  63   1        };
+  64   1        crc=0;
+  65   1        while(len--!=0) 
+  66   1        {
+  67   2          da=((uint8_t)(crc/256))/16;
+  68   2          crc<<=4;
+  69   2          crc^=crc_ta[da^(*ptr/16)];
+  70   2          da=((uint8_t)(crc/256))/16; 
+  71   2          crc<<=4; 
+  72   2          crc^=crc_ta[da^(*ptr & 0x0f)]; 
+  73   2          ptr++;
+  74   2        }
+  75   1        return(crc);
+  76   1      }
+  77          
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    312    ----
+   CONSTANT SIZE    =     32    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----      27
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

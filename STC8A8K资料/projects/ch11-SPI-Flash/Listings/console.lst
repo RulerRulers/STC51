@@ -1,0 +1,130 @@
+C51 COMPILER V9.50a   CONSOLE                                                              05/17/2019 16:38:39 PAGE 1   
+
+
+C51 COMPILER V9.50a, COMPILATION OF MODULE CONSOLE
+OBJECT MODULE PLACED IN .\Objects\console.obj
+COMPILER INVOKED BY: D:\KEIL4\C51\BIN\C51.EXE src\console.c BROWSE DEBUG OBJECTEXTEND PRINT(.\Listings\console.lst) TABS
+                    -(2) OBJECT(.\Objects\console.obj)
+
+line level    source
+
+   1          /*
+   2           * Copyright        : Shendong MCU studio
+   3           * File Description : Console Task
+   4           * Created          : oliverzhang@shendongmcu.com
+   5           */
+   6          #include "global.h"
+   7          
+   8          extern void eeprom_TestMain(unsigned char argc, char *argv[]);
+   9          extern void rtc_TestMain(unsigned char argc, char *argv[]);
+  10          extern void xmodem_Main(uint8_t argc,char *argv[]);
+  11          
+  12          #define MAX_ARG_NUM 5
+  13          extern char *strsep(char **s, const char *ct);
+  14          static void ProcessOneLine(char xdata *cmd_line)
+  15          {
+  16   1        unsigned char argc;
+  17   1        static char * xdata argv[MAX_ARG_NUM];
+  18   1        char *pline;
+  19   1        char *ret;
+  20   1        for (argc = 0, pline = cmd_line;;)
+  21   1        {
+  22   2          ret = strsep(&pline, " \t\n\r");
+  23   2          if (ret == NULL) break;
+  24   2          if (strcmp(ret, "") == 0) continue;
+  25   2          argv[argc] = ret;
+  26   2          argc++;
+  27   2          if (argc >= MAX_ARG_NUM) break;
+  28   2        }
+  29   1        if (argc == 0) return;
+  30   1      
+  31   1        if (strcmp(argv[0], "test-eeprom") == 0)
+  32   1        {
+  33   2          eeprom_TestMain(argc,argv);
+  34   2        }
+  35   1        else if(strcmp(argv[0], "test-rtc") == 0)
+  36   1        {
+  37   2          rtc_TestMain(argc,argv);
+  38   2        }
+  39   1        else if(strcmp(argv[0], "test-m25p80") == 0)
+  40   1        {
+  41   2          m25p80_TestMain(argc,argv);
+  42   2        }
+  43   1        else if(strcmp(argv[0], "xmodem") == 0)
+  44   1        {
+  45   2          xmodem_Main(argc,argv);
+  46   2        }
+  47   1        else if (strcmp(argv[0], "?") == 0 || 0 == strcmp(argv[0], "help"))
+  48   1        {
+  49   2          printf("Support Command List:\r\n");
+  50   2          printf("test-eeprom: test eeprom read and write function.\r\n");
+  51   2          printf("test-rtc: test RTC read and write function.\r\n");
+  52   2          printf("test-m25p80: m25p80 test function.\r\n");
+  53   2          printf("xmodem: transmit file to flash or dump file from flash through xmodem protocol.\r\n");
+  54   2          printf("help or ?: command list\r\n");
+C51 COMPILER V9.50a   CONSOLE                                                              05/17/2019 16:38:39 PAGE 2   
+
+  55   2          printf("clear or cls: clear screen\r\n");
+  56   2        }
+  57   1        else if (strcmp(argv[0], "clear") == 0 || 0 == strcmp(argv[0], "cls"))
+  58   1        {
+  59   2          unsigned char i;
+  60   2          for (i = 0; i < 30; i++)
+  61   2          {
+  62   3            printf("\r\n");
+  63   3          }
+  64   2          return;
+  65   2        }
+  66   1        else 
+  67   1        {
+  68   2          printf("command %s not supported.\r\n", argv[0]);
+  69   2        }
+  70   1      }
+  71          
+  72          void console_Task(void)
+  73          {
+  74   1        char buf[8];
+  75   1        unsigned char i, ret;
+  76   1        static char xdata line[80];
+  77   1        static unsigned char xdata state;
+  78   1      
+  79   1        ret = uart1_Read(buf, sizeof(buf));
+  80   1        if (ret <= 0) return;
+  81   1        for (i = 0; i < ret; i++)
+  82   1        {
+  83   2          uart1_Write(&buf[i], 1);
+  84   2          if (state < sizeof(line)-1)
+  85   2          {
+  86   3            if (buf[i] != '\b')
+  87   3            {
+  88   4              line[state] = buf[i];
+  89   4              state++;
+  90   4            }
+  91   3            else
+  92   3            {
+  93   4              if (state>0)state--;
+  94   4            }
+  95   3          }
+  96   2          if (buf[i] == '\n')
+  97   2          {
+  98   3            line[state] = '\0';
+  99   3            ProcessOneLine(line);
+ 100   3            printf("$>");
+ 101   3            state = 0;
+ 102   3          }
+ 103   2        }
+ 104   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    622    ----
+   CONSTANT SIZE    =    393    ----
+   XDATA SIZE       =     96    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----      18
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

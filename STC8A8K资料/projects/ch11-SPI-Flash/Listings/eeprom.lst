@@ -1,0 +1,322 @@
+C51 COMPILER V9.50a   EEPROM                                                               05/17/2019 16:38:39 PAGE 1   
+
+
+C51 COMPILER V9.50a, COMPILATION OF MODULE EEPROM
+OBJECT MODULE PLACED IN .\Objects\eeprom.obj
+COMPILER INVOKED BY: D:\KEIL4\C51\BIN\C51.EXE src\eeprom.c BROWSE DEBUG OBJECTEXTEND PRINT(.\Listings\eeprom.lst) TABS(2
+                    -) OBJECT(.\Objects\eeprom.obj)
+
+line level    source
+
+   1          /*
+   2           * Copyright        : Shendong MCU studio
+   3           * File Description : I2C protocol and EEPROM driver
+   4           * Created          : oliverzhang@shendongmcu.com
+   5           */
+   6          #include "global.h"
+   7          
+   8          sbit SCL = P7^7;
+   9          sbit SDA = P7^6;
+  10          static void SET_IIC_SCL(void)
+  11          {
+  12   1        SCL = 1;
+  13   1      }
+  14          static void CLR_IIC_SCL(void)
+  15          {
+  16   1        SCL = 0;
+  17   1      }
+  18          /*required by other file: PCF8563 driver.*/
+  19          /*static */void SET_IIC_SDA(void)
+  20          {
+  21   1        SDA = 1;
+  22   1      }
+  23          static void CLR_IIC_SDA(void)
+  24          {
+  25   1        SDA = 0;
+  26   1      }
+  27          static uint8_t IIC_SDA_IS_HIGH(void)
+  28          {
+  29   1        return (SDA == 1);
+  30   1      }
+  31          void i2c_StartCondition(void) /*20us */
+  32          {
+  33   1        SET_IIC_SCL();
+  34   1        SET_IIC_SDA();
+  35   1        time_HoggingDelayUs(6);
+  36   1        SET_IIC_SDA();
+  37   1        time_HoggingDelayUs(6);
+  38   1        CLR_IIC_SDA();
+  39   1        time_HoggingDelayUs(6);
+  40   1      }
+  41          uint8_t i2c_SendByteCheckAck(uint8_t uc)/*135 us*/
+  42          {
+  43   1        uint8_t i, ack = 0;
+  44   1        for(i=0;i<8;i++)
+  45   1        {
+  46   2          CLR_IIC_SCL();
+  47   2          time_HoggingDelayUs(1);
+  48   2          if(uc&0x80)
+  49   2            SET_IIC_SDA();
+  50   2          else 
+  51   2            CLR_IIC_SDA();
+  52   2          uc<<=1;
+  53   2          time_HoggingDelayUs(6);
+  54   2          SET_IIC_SCL();
+C51 COMPILER V9.50a   EEPROM                                                               05/17/2019 16:38:39 PAGE 2   
+
+  55   2          time_HoggingDelayUs(6);
+  56   2        }
+  57   1        CLR_IIC_SCL();
+  58   1        time_HoggingDelayUs(1);
+  59   1        SET_IIC_SDA();
+  60   1        time_HoggingDelayUs(6);
+  61   1        SET_IIC_SCL();
+  62   1        time_HoggingDelayUs(6);
+  63   1        if(IIC_SDA_IS_HIGH())
+  64   1        {
+  65   2          ack|=0x80;
+  66   2        }
+  67   1        else 
+  68   1        {
+  69   2          ack&=0x7f;
+  70   2        }
+  71   1        CLR_IIC_SCL();
+  72   1        time_HoggingDelayUs(1);
+  73   1        return ack;
+  74   1      }
+  75          
+  76          uint8_t i2c_ReceiveByteWithAck(void)/*135 us*/
+  77          {
+  78   1        uint8_t i,uc;
+  79   1        for(i=0;i<8;i++)
+  80   1        {
+  81   2          CLR_IIC_SCL();
+  82   2          time_HoggingDelayUs(1);
+  83   2          SET_IIC_SDA();
+  84   2          time_HoggingDelayUs(6);
+  85   2          SET_IIC_SCL();
+  86   2          time_HoggingDelayUs(6);
+  87   2          uc<<=1;
+  88   2          if(IIC_SDA_IS_HIGH())uc|=0x01;
+  89   2        }
+  90   1        CLR_IIC_SCL();
+  91   1        time_HoggingDelayUs(1);
+  92   1        CLR_IIC_SDA();
+  93   1        time_HoggingDelayUs(6);
+  94   1        SET_IIC_SCL();
+  95   1        time_HoggingDelayUs(6);
+  96   1      
+  97   1        CLR_IIC_SCL();
+  98   1        time_HoggingDelayUs(1);
+  99   1        return uc;
+ 100   1      }
+ 101          
+ 102          uint8_t i2c_ReceiveByteWithoutAck(void)/*135us*/
+ 103          {
+ 104   1        uint8_t i,uc=0;
+ 105   1        for(i=0;i<8;i++)
+ 106   1        {
+ 107   2          CLR_IIC_SCL();
+ 108   2          time_HoggingDelayUs(1);
+ 109   2          SET_IIC_SDA();
+ 110   2          time_HoggingDelayUs(6);
+ 111   2          SET_IIC_SCL();
+ 112   2          time_HoggingDelayUs(6);
+ 113   2          uc<<=1;
+ 114   2          if(IIC_SDA_IS_HIGH())uc|=0x01;
+ 115   2        }
+ 116   1      
+C51 COMPILER V9.50a   EEPROM                                                               05/17/2019 16:38:39 PAGE 3   
+
+ 117   1        CLR_IIC_SCL();
+ 118   1        time_HoggingDelayUs(1);
+ 119   1        SET_IIC_SDA();
+ 120   1        time_HoggingDelayUs(6);
+ 121   1        SET_IIC_SCL();
+ 122   1        time_HoggingDelayUs(6);
+ 123   1        CLR_IIC_SCL();
+ 124   1        time_HoggingDelayUs(1);
+ 125   1        return uc;
+ 126   1      }
+ 127          
+ 128          void i2c_StopCondition(void) /*30us*/
+ 129          {
+ 130   1        CLR_IIC_SCL();
+ 131   1        time_HoggingDelayUs(1);
+ 132   1        CLR_IIC_SDA();
+ 133   1        time_HoggingDelayUs(6);
+ 134   1        SET_IIC_SCL();
+ 135   1        
+ 136   1        CLR_IIC_SDA();
+ 137   1        time_HoggingDelayUs(6);
+ 138   1        SET_IIC_SDA();
+ 139   1        time_HoggingDelayUs(6);
+ 140   1        
+ 141   1        SET_IIC_SDA();
+ 142   1        SET_IIC_SCL();
+ 143   1        time_HoggingDelayUs(6);
+ 144   1      }
+ 145          
+ 146          int eeprom_Read(void *vbuf, uint16_t len, uint16_t addr)
+ 147          {
+ 148   1        uint8_t ack;
+ 149   1        uint8_t *buf = (uint8_t *)vbuf;
+ 150   1        uint16_t i;
+ 151   1        if(len ==0) return 0;
+ 152   1        for(i=0;i<10;i++)
+ 153   1        {
+ 154   2          i2c_StartCondition();
+ 155   2          ack =i2c_SendByteCheckAck(0xa0);
+ 156   2          if((ack&0x80)==0) break;
+ 157   2          i2c_StopCondition();
+ 158   2          time_HoggingDelayMs(1);
+ 159   2        }
+ 160   1        if(i != 0)
+ 161   1        {   
+ 162   2          printf("eeprom_Read try %u times.\r\n",i);
+ 163   2        }
+ 164   1        if(i == 10) 
+ 165   1        {
+ 166   2          i2c_StopCondition();
+ 167   2          return -1;
+ 168   2        }
+ 169   1        ack = i2c_SendByteCheckAck(addr>>8);
+ 170   1        if((ack&0x80)!=0)
+ 171   1        {
+ 172   2          i2c_StopCondition();
+ 173   2          return -2;
+ 174   2        }
+ 175   1        ack = i2c_SendByteCheckAck(addr);
+ 176   1        if((ack&0x80)!=0)
+ 177   1        {
+ 178   2          i2c_StopCondition();
+C51 COMPILER V9.50a   EEPROM                                                               05/17/2019 16:38:39 PAGE 4   
+
+ 179   2          return -3;
+ 180   2        }
+ 181   1        SET_IIC_SDA();
+ 182   1        time_HoggingDelayUs(6);
+ 183   1        /*Restart for read*/
+ 184   1        i2c_StartCondition();
+ 185   1        ack = i2c_SendByteCheckAck(0xa1);
+ 186   1        if((ack&0x80)!=0)
+ 187   1        {
+ 188   2          i2c_StopCondition();
+ 189   2          return -4;
+ 190   2        }
+ 191   1        for(i=0;i<len-1;i++)
+ 192   1        {
+ 193   2          buf[i]=i2c_ReceiveByteWithAck();
+ 194   2        }
+ 195   1        buf[i] = i2c_ReceiveByteWithoutAck();
+ 196   1        i2c_StopCondition();
+ 197   1        return 0;
+ 198   1      }
+ 199          
+ 200          static int PageProgram(uint16_t page,uint16_t offset,const uint8_t *buf, uint16_t len)
+ 201          {
+ 202   1        uint8_t ack;
+ 203   1        uint16_t i;
+ 204   1        uint16_t addr;
+ 205   1        addr = (page << 5) + offset;
+ 206   1      
+ 207   1        for(i=0;i<10;i++)
+ 208   1        {
+ 209   2          i2c_StartCondition();
+ 210   2          ack = i2c_SendByteCheckAck(0xa0);
+ 211   2          if((ack&0x80)==0) break;
+ 212   2          i2c_StopCondition();
+ 213   2          time_HoggingDelayMs(1);
+ 214   2        }
+ 215   1        if(i != 0)
+ 216   1        {
+ 217   2          printf("eeprom_Write try %u times.\r\n",i);
+ 218   2        }
+ 219   1        if(i == 10) 
+ 220   1        {
+ 221   2          i2c_StopCondition();
+ 222   2          return -1;
+ 223   2        }
+ 224   1        ack = i2c_SendByteCheckAck(addr>>8);
+ 225   1        if((ack&0x80)!=0)
+ 226   1        {
+ 227   2          i2c_StopCondition();
+ 228   2          return -2;
+ 229   2        }
+ 230   1        ack = i2c_SendByteCheckAck(addr);
+ 231   1        if((ack&0x80)!=0)
+ 232   1        {
+ 233   2          i2c_StopCondition();
+ 234   2          return -3;
+ 235   2        }
+ 236   1        for(i=0;i<len;i++)
+ 237   1        {
+ 238   2          ack = i2c_SendByteCheckAck(buf[i]);
+ 239   2          if((ack&0x80)!=0)
+ 240   2          {
+C51 COMPILER V9.50a   EEPROM                                                               05/17/2019 16:38:39 PAGE 5   
+
+ 241   3            i2c_StopCondition();
+ 242   3            return -4;
+ 243   3          }
+ 244   2        }
+ 245   1        i2c_StopCondition();
+ 246   1        return 0;
+ 247   1      }
+ 248          
+ 249          int eeprom_Write(const void *vbuf, uint16_t len, uint16_t addr)
+ 250          {
+ 251   1        const uint8_t *buf = (const uint8_t *)vbuf;
+ 252   1        uint16_t page,startpos;
+ 253   1        uint16_t nleft,nwrite;
+ 254   1        int ret;
+ 255   1      
+ 256   1        page = addr / 32;
+ 257   1        startpos = addr % 32;
+ 258   1        nleft=len;
+ 259   1        for(;nleft;)
+ 260   1        {
+ 261   2          if(nleft <= 32 - startpos)
+ 262   2            nwrite = nleft;
+ 263   2          else
+ 264   2            nwrite = 32 - startpos;
+ 265   2          ret = PageProgram(page,startpos,buf,nwrite);
+ 266   2          if(ret != 0) return ret;
+ 267   2          buf += nwrite;
+ 268   2          nleft -= nwrite;
+ 269   2          page ++;
+ 270   2          startpos=0;
+ 271   2        }
+ 272   1        return 0;
+ 273   1      }
+ 274          
+ 275          void eeprom_TestMain(unsigned char argc, char *argv[])
+ 276          {
+ 277   1        char xdata buf[20];
+ 278   1        if(argc != 2)
+ 279   1        {
+ 280   2          printf("Usage: %s string-ro-write\r\n",argv[0]);
+ 281   2          return;
+ 282   2        }
+ 283   1        printf("write \"%s\" to address 0x111\r\n");
+ 284   1        eeprom_Write(argv[1],strlen(argv[1]),0x111);
+ 285   1        memset(buf,0,sizeof(buf));
+ 286   1        printf("then read it back and checking:\r\n");
+ 287   1        eeprom_Read(buf,sizeof(buf)-1,0x111);
+ 288   1        printf("%s\r\n",buf);
+ 289   1      }
+ 290          
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   1187    ----
+   CONSTANT SIZE    =    154    ----
+   XDATA SIZE       =   ----      20
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----      55
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

@@ -1,0 +1,121 @@
+C51 COMPILER V9.50a   TIME                                                                 05/17/2019 08:50:53 PAGE 1   
+
+
+C51 COMPILER V9.50a, COMPILATION OF MODULE TIME
+OBJECT MODULE PLACED IN .\Objects\time.obj
+COMPILER INVOKED BY: D:\KEIL4\C51\BIN\C51.EXE src\time.c BROWSE DEBUG OBJECTEXTEND PRINT(.\Listings\time.lst) TABS(2) OB
+                    -JECT(.\Objects\time.obj)
+
+line level    source
+
+   1          /*
+   2           * Copyright        : Shendong mcu studio
+   3           * File Description : Time related function.
+   4           * Created          : by oliverzhang@shendongmcu.com
+   5           */
+   6          
+   7          #include "global.h"
+   8          
+   9          /*System ticks*/
+  10          static volatile unsigned long idata g_sys_ticks;
+  11          static unsigned int code g_timer0_init_val = 65536 - (22118400UL/12/1000);
+  12          /*Timer 0 as system tick timer. 1KHZ */
+  13          void time_Initialization(void)
+  14          {
+  15   1        /*Timer0 at 16-bit timer mode.*/
+  16   1        TMOD = (TMOD & 0xf0u) | 0x01u;
+  17   1        TL0 = g_timer0_init_val & 0xff;
+  18   1        TH0 = g_timer0_init_val >> 8; 
+  19   1        ET0 = 1; /*Enable timer0 interrupt.*/
+  20   1        TR0 = 1; /*Start running.*/
+  21   1      }
+  22          
+  23          void timer0_ISR(void) interrupt 1
+  24          {
+  25   1        TL0 = g_timer0_init_val & 0xff;
+  26   1        TH0 = g_timer0_init_val >> 8; 
+  27   1        g_sys_ticks ++;
+  28   1      }
+  29          
+  30          unsigned long time_GetTicks(void)
+  31          {
+  32   1        unsigned long ticks;
+  33   1        EA = 0;
+  34   1        ticks = g_sys_ticks;
+  35   1        EA = 1;
+  36   1        return ticks;
+  37   1      }
+  38          
+  39          /*Software delay*/
+  40          static void Delay1ms()
+  41          {
+  42   1        unsigned char i, j;
+  43   1      
+  44   1        _nop_();
+  45   1        _nop_();
+  46   1        i = 22;
+  47   1        j = 128;
+  48   1        do
+  49   1        {
+  50   2          while (--j);
+  51   2        } while (--i);
+  52   1      }
+  53          static void Delay1us()
+  54          {
+C51 COMPILER V9.50a   TIME                                                                 05/17/2019 08:50:53 PAGE 2   
+
+  55   1        unsigned char i;
+  56   1      
+  57   1        i = 3;
+  58   1        while (--i);
+  59   1      }
+  60          static void Delay10us()
+  61          {
+  62   1        unsigned char i;
+  63   1      
+  64   1        _nop_();
+  65   1        _nop_();
+  66   1        _nop_();
+  67   1        i = 52;
+  68   1        while (--i);
+  69   1      }
+  70          static void Delay100us()
+  71          {
+  72   1        unsigned char i, j;
+  73   1      
+  74   1        i = 3;
+  75   1        j = 35;
+  76   1        do
+  77   1        {
+  78   2          while (--j);
+  79   2        } while (--i);
+  80   1      }
+  81          
+  82          void time_HoggingDelayMs(unsigned int ms)
+  83          {
+  84   1        for(;ms;ms--)
+  85   1        {
+  86   2          Delay1ms();
+  87   2        }
+  88   1      }
+  89          
+  90          void time_HoggingDelayUs(unsigned int us)
+  91          {
+  92   1        for(;us>=100;us-=100) Delay100us();
+  93   1        for(;us>=10;us-=10) Delay10us();
+  94   1        for(;us>0;us--) Delay1us();
+  95   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    238    ----
+   CONSTANT SIZE    =      2    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =      4    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

@@ -1,0 +1,122 @@
+C51 COMPILER V9.50a   UART1                                                                05/17/2019 16:38:39 PAGE 1   
+
+
+C51 COMPILER V9.50a, COMPILATION OF MODULE UART1
+OBJECT MODULE PLACED IN .\Objects\uart1.obj
+COMPILER INVOKED BY: D:\KEIL4\C51\BIN\C51.EXE src\uart1.c BROWSE DEBUG OBJECTEXTEND PRINT(.\Listings\uart1.lst) TABS(2) 
+                    -OBJECT(.\Objects\uart1.obj)
+
+line level    source
+
+   1          /*
+   2           * Copyright        : shendong MCU studio
+   3           * File Description : UART1 driver
+   4           * Created          : by oliverzhang@shendongmcu.com
+   5           */
+   6          
+   7          #include "global.h"
+   8          
+   9          void uart1_Initialization(void)
+  10          {
+  11   1        //__enable_xfr();
+  12   1        //P3PU |= 0x02u;
+  13   1        //__disable_xfr();
+  14   1        /*Default setting: Timer2 as baud rate generator for UART1.  */
+  15   1        T2L = (65536ul - 4);
+  16   1        T2H = (65536ul - 4) >> 8;/*22118400/12/4/115200 = 4 */
+  17   1        AUXR |= 0x11u; /*Start timer2. Timer2 as timer. 12T mode.*/
+  18   1        SCON = 0x50u;/*UART1 at mode 1:8-N-1 115200 , Enable Receiver.*/
+  19   1        ES = 1; /*Enable UART1 interrupt.*/
+  20   1      }
+  21          
+  22          /*implemented for printf() */
+  23          char putchar(char c)  
+  24          {
+  25   1        SBUF = c;
+  26   1        while (TI == 0);
+  27   1        TI = 0;
+  28   1        return c;
+  29   1      }
+  30          
+  31          #define UART1_MAXBUFLEN (140)
+  32          #if (UART1_MAXBUFLEN>255)
+              #error "UART buffer must be less than 256 bytes because of head/rear data size is 8-bit unsigned char."
+              #error "if xmodem function is enabled, LENGTH must be great than 133 bytes."
+              #endif
+  36          static volatile struct _uart1_param_tag{
+  37            unsigned char head;
+  38            unsigned char rear;
+  39            char buffer[UART1_MAXBUFLEN];
+  40          } xdata g_uart1_param;
+  41          
+  42          unsigned char uart1_Read(void *vbuf,unsigned char len)
+  43          {
+  44   1        unsigned char i = 0;
+  45   1        char *buf = (char *)vbuf;
+  46   1        for(i=0; i<len; i++)
+  47   1        {
+  48   2          EA = 0; 
+  49   2          if(g_uart1_param.rear == g_uart1_param.head)
+  50   2          {
+  51   3            EA = 1;
+  52   3            break;
+  53   3          }
+  54   2          buf[i] = g_uart1_param.buffer[g_uart1_param.rear];
+C51 COMPILER V9.50a   UART1                                                                05/17/2019 16:38:39 PAGE 2   
+
+  55   2          g_uart1_param.rear ++;
+  56   2          if(g_uart1_param.rear >= UART1_MAXBUFLEN)
+  57   2            g_uart1_param.rear = 0;
+  58   2          EA = 1;
+  59   2          _nop_();
+  60   2        }
+  61   1        return i;
+  62   1      }
+  63          
+  64          void UART1_IRQHandler(void) interrupt 4
+  65          {
+  66   1        unsigned char val;
+  67   1        if(RI)
+  68   1        {
+  69   2          val = SBUF;
+  70   2          RI = 0;
+  71   2          if( (g_uart1_param.head+1) % UART1_MAXBUFLEN == g_uart1_param.rear )
+  72   2          {
+  73   3            /*TODO: Add error handling here.*/
+  74   3            //debug_Assert(0,DPFL,"UART0:buffer full.");
+  75   3          }
+  76   2          else
+  77   2          {
+  78   3            g_uart1_param.buffer[g_uart1_param.head] = val;
+  79   3            g_uart1_param.head++;
+  80   3            if(g_uart1_param.head >= UART1_MAXBUFLEN)
+  81   3              g_uart1_param.head = 0;
+  82   3          }
+  83   2        }
+  84   1      }
+  85          
+  86          void uart1_Write(const void *vbuf, unsigned char len)
+  87          {
+  88   1        unsigned char i;
+  89   1        const char *buf = (const char *)vbuf;
+  90   1        for(i=0;i<len;i++)
+  91   1        {
+  92   2          SBUF = buf[i];
+  93   2          while(TI == 0);
+  94   2          TI = 0;
+  95   2        }
+  96   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    247    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =    142    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----       6
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

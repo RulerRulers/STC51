@@ -1,0 +1,413 @@
+C51 COMPILER V9.50a   IR                                                                   05/17/2019 16:38:38 PAGE 1   
+
+
+C51 COMPILER V9.50a, COMPILATION OF MODULE IR
+OBJECT MODULE PLACED IN .\Objects\ir.obj
+COMPILER INVOKED BY: D:\KEIL4\C51\BIN\C51.EXE src\ir.c BROWSE DEBUG OBJECTEXTEND PRINT(.\Listings\ir.lst) TABS(2) OBJECT
+                    -(.\Objects\ir.obj)
+
+line level    source
+
+   1          /*
+   2           * Copyright        : Shendong mcu studio
+   3           * File Description : IR driver.
+   4           * Created          : by oliverzhang@shendongmcu.com
+   5           */
+   6          
+   7          #include "global.h"
+   8          
+   9          #if (CFG_SYSFREQ == 11059200UL)
+              /*12443 -- 13.5ms*/
+              #define MIN_13_5MS_TICKS  12143
+              #define MAX_13_5MS_TICKS  12543
+              /*1037---1.125 ms*/
+              #define MIN_1_125MS_TICKS 737
+              #define MAX_1_125MS_TICKS 1137
+              /*2074---2.25ms*/
+              #define MIN_2_25MS_TICKS  1774
+              #define MAX_2_25MS_TICKS  2174
+              /*10372--11.25 ms*/
+              #define MIN_11_25MS_TICKS 10072
+              #define MAX_11_25MS_TICKS 10472
+              /*12443 -- 13.5ms*/
+              #define MIN_13_5MS_TICKS  12143
+              #define MAX_13_5MS_TICKS  12543
+              /*88848 -- 96.75ms*/
+              #define MIN_96_75MS_TICKS 88548
+              #define MAX_96_75MS_TICKS 88948
+              /*29043 -- 45639 : 31.5ms -- 49.5ms */
+              #define MIN_31_5MS_TICKS  28743
+              #define MAX_49_5MS_TICKS  45739
+              
+              #elif (CFG_SYSFREQ == 22118400UL)
+  33          
+  34          /*12443x2 -- 13.5ms*/
+  35          #define MIN_13_5MS_TICKS  (12143*2)
+  36          #define MAX_13_5MS_TICKS  (12543*2)
+  37          /*1037x2---1.125 ms*/
+  38          #define MIN_1_125MS_TICKS (737*2)
+  39          #define MAX_1_125MS_TICKS (1137*2)
+  40          /*2074x2---2.25ms*/
+  41          #define MIN_2_25MS_TICKS  (1774*2)
+  42          #define MAX_2_25MS_TICKS  (2174*2)
+  43          /*10372x2--11.25 ms*/
+  44          #define MIN_11_25MS_TICKS (10072*2)
+  45          #define MAX_11_25MS_TICKS (10472*2)
+  46          /*12443x2 -- 13.5ms*/
+  47          #define MIN_13_5MS_TICKS  (12143*2)
+  48          #define MAX_13_5MS_TICKS  (12543*2)
+  49          /*88848x2 -- 96.75ms*/
+  50          #define MIN_96_75MS_TICKS (88548*2)
+  51          #define MAX_96_75MS_TICKS (88948*2)
+  52          /*29043x2 -- 45639x2 : 31.5ms -- 49.5ms */
+  53          #define MIN_31_5MS_TICKS  (28743*2)
+  54          #define MAX_49_5MS_TICKS  (45739*2)
+C51 COMPILER V9.50a   IR                                                                   05/17/2019 16:38:38 PAGE 2   
+
+  55          #else
+                #error "must have a choice."
+              #endif
+  58          
+  59          #define IR_BUFLEN 50
+  60          typedef struct _ir_param_struct_tag{
+  61            unsigned char head;
+  62            unsigned char rear;
+  63            unsigned char th0[IR_BUFLEN];
+  64            unsigned char tl0[IR_BUFLEN];
+  65            unsigned int timer[IR_BUFLEN];
+  66          } ir_param_t;
+  67          static volatile ir_param_t xdata g_ir_param;
+  68          static const unsigned char code g_enable_debug = 0;
+  69          
+  70          /*IR Input pin initialization.*/
+  71          sbit IR_INPUT = P3^2;
+  72          void ir_Initialization(void)
+  73          {
+  74   1        IR_INPUT = 1;
+  75   1        IT0 = 1; /*Negative edge trigger external interrupt.*/
+  76   1        IE0 = 0;
+  77   1        EX0 = 1;
+  78   1      }
+  79          
+  80          static unsigned char IrCodeToKeyCodeZhongJiu(unsigned char ir_code)
+  81          {
+  82   1        switch(ir_code)
+  83   1        {
+  84   2          case 0x0: return KEY_POWER;break;
+  85   2          case 0x1: return KEY_MUTE;break;
+  86   2          case 0x11: return KEY_1;break;
+  87   2          case 0x12: return KEY_2;break;
+  88   2          case 0x13: return KEY_3;break;
+  89   2          case 0x14: return KEY_4;break;
+  90   2          case 0x15: return KEY_5;break;
+  91   2          case 0x16: return KEY_6;break;
+  92   2          case 0x17: return KEY_7;break;
+  93   2          case 0x18: return KEY_8;break;
+  94   2          case 0x19: return KEY_9;break;
+  95   2          case 0x1b: return KEY_TVAV;break;
+  96   2          case 0x10: return KEY_0;break;
+  97   2          case 0x1a: return KEY_RETURN;break;
+  98   2          case 0x2: return KEY_MENU;break;
+  99   2          case 0x3: return KEY_RETURN;break;
+ 100   2          case 0x5: return KEY_UP;break;
+ 101   2          case 0x7: return KEY_LEFT;break;
+ 102   2          case 0x4: return KEY_OK;break;
+ 103   2          case 0x8: return KEY_RIGHT;break;
+ 104   2          case 0x6: return KEY_DOWN;break;
+ 105   2          case 0x9: return KEY_PREVPAGE;break;
+ 106   2          case 0xa: return KEY_NEXTPAGE;break;
+ 107   2          case 0x20: return KEY_CHANNELLIST;break;
+ 108   2          case 0x21: return KEY_PROGRAMGUIDE;break;
+ 109   2          case 0x22: return KEY_PROGRAMINFO;break;
+ 110   2          case 0x23: return KEY_INFOSERVICE;break;
+ 111   2          case 0x24: return KEY_RED;break;
+ 112   2          case 0x25: return KEY_GREEN;break;
+ 113   2          case 0x26: return KEY_YELLOW;break;
+ 114   2          case 0x27: return KEY_BLUE;break;
+ 115   2          case 0x28: return KEY_F1;break;
+ 116   2          case 0x29: return KEY_F2;break;
+C51 COMPILER V9.50a   IR                                                                   05/17/2019 16:38:38 PAGE 3   
+
+ 117   2          case 0x2a: return KEY_F3;break;
+ 118   2          case 0x2b: return KEY_F4;break;
+ 119   2          default: return KEY_UNKNOWN;break;
+ 120   2        }
+ 121   1        return KEY_NONE;
+ 122   1      }
+ 123          
+ 124          static unsigned char IrCodeToKeyCode(unsigned char ir_code)
+ 125          {
+ 126   1        switch(ir_code)
+ 127   1        {
+ 128   2          case 0x00: return KEY_POWER;break;
+ 129   2          case 0x01: return KEY_UNKNOWN;break;
+ 130   2          case 0x02: return KEY_MENU;break;
+ 131   2          case 0x04: return KEY_PLUS;break;
+ 132   2          case 0x05: return KEY_UP;break;
+ 133   2          case 0x06: return KEY_RETURN;break;
+ 134   2          case 0x08: return KEY_LEFT;break;
+ 135   2          case 0x09: return KEY_OK;break;
+ 136   2          case 0x0A: return KEY_RIGHT;break;
+ 137   2          case 0x0C: return KEY_MINUS;break;
+ 138   2          case 0x0D: return KEY_DOWN;break;
+ 139   2          case 0x0E: return KEY_0;break;
+ 140   2          case 0x10: return KEY_1;break;
+ 141   2          case 0x11: return KEY_2;break;
+ 142   2          case 0x12: return KEY_3;break;
+ 143   2          case 0x14: return KEY_4;break;
+ 144   2          case 0x15: return KEY_5;break;
+ 145   2          case 0x16: return KEY_6;break;
+ 146   2          case 0x18: return KEY_7;break;
+ 147   2          case 0x19: return KEY_8;break;
+ 148   2          case 0x1A: return KEY_9;break;
+ 149   2          default: return KEY_UNKNOWN;break;
+ 150   2        }
+ 151   1        return KEY_NONE;
+ 152   1      }
+ 153          
+ 154          void ir_Task(void)
+ 155          {
+ 156   1        static unsigned char idata state;
+ 157   1        static unsigned long idata old_tp;
+ 158   1        static unsigned long idata tp_ticks;
+ 159   1        static unsigned char idata ir_buffer[4];
+ 160   1        static unsigned char idata key_code = KEY_NONE,repeat_counter;
+ 161   1        unsigned long tp;
+ 162   1        unsigned char th0,tl0,rear,i;
+ 163   1        unsigned int timer;
+ 164   1        unsigned char record_ok = 0;
+ 165   1        unsigned long span;
+ 166   1      
+ 167   1        EA = 0;
+ 168   1        if(g_ir_param.head != g_ir_param.rear)
+ 169   1        {
+ 170   2          rear = g_ir_param.rear;
+ 171   2          if(g_ir_param.head != rear)
+ 172   2          {
+ 173   3            timer = g_ir_param.timer[rear];
+ 174   3            tl0 = g_ir_param.tl0[rear];
+ 175   3            th0 = g_ir_param.th0[rear];
+ 176   3            record_ok = 1;
+ 177   3            rear ++;
+ 178   3            if(rear >= IR_BUFLEN) rear = 0;
+C51 COMPILER V9.50a   IR                                                                   05/17/2019 16:38:38 PAGE 4   
+
+ 179   3            g_ir_param.rear = rear;
+ 180   3          }
+ 181   2        }
+ 182   1        EA =1;
+ 183   1        if(record_ok)
+ 184   1        {
+ 185   2          tp = timer;
+ 186   2          tp <<= 16;
+ 187   2          timer = th0;
+ 188   2          timer <<= 8;
+ 189   2          timer |= tl0;
+ 190   2          tp |= timer;
+ 191   2          tp_ticks = time_GetTicks();
+ 192   2          if(g_enable_debug)printf("tp = %lu\r\n",tp);
+ 193   2        }
+ 194   1        if(state != 0)
+ 195   1        {
+ 196   2          if(time_GetTicks() - tp_ticks < 150) /*>= 108ms with some tolerance*/
+ 197   2          {
+ 198   3            /*Do nothing.*/
+ 199   3          }
+ 200   2          else 
+ 201   2          {
+ 202   3            if(record_ok == 0) /*There MUST not be un-processed records.*/
+ 203   3            {
+ 204   4              if(key_code != KEY_NONE)
+ 205   4              {
+ 206   5                key_InsertKeyCode(key_code, KEY_RELEASED);
+ 207   5              }
+ 208   4              state = 0;
+ 209   4              if(g_enable_debug)printf("return to state 0.\r\n");
+ 210   4            }
+ 211   3          }
+ 212   2        }
+ 213   1        
+ 214   1        if(record_ok == 0) return;
+ 215   1        span = tp - old_tp;
+ 216   1        old_tp = tp;
+ 217   1        if(g_enable_debug)printf("state=%bu,span=%lu\r\n",state,span);
+ 218   1        
+ 219   1        switch(state)
+ 220   1        {
+ 221   2        case 0:
+ 222   2          key_code = KEY_NONE;
+ 223   2          ir_buffer[0]=0;
+ 224   2          ir_buffer[1]=0;
+ 225   2          ir_buffer[2]=0;
+ 226   2          ir_buffer[3]=0;
+ 227   2          state = 1;
+ 228   2          break;
+ 229   2        case 1:
+ 230   2          if(span > MIN_13_5MS_TICKS && span < MAX_13_5MS_TICKS) /*12443 -- 13.5ms*/
+ 231   2          {
+ 232   3            state = 2;
+ 233   3          }
+ 234   2          else
+ 235   2          {
+ 236   3            state = 0;
+ 237   3          }
+ 238   2          break;
+ 239   2        default:
+ 240   2          if(span>MIN_1_125MS_TICKS && span<MAX_1_125MS_TICKS)/*1037---1.125 ms*/
+C51 COMPILER V9.50a   IR                                                                   05/17/2019 16:38:38 PAGE 5   
+
+ 241   2          {
+ 242   3            i=0;
+ 243   3          }
+ 244   2          else if(span>MIN_2_25MS_TICKS && span<MAX_2_25MS_TICKS)/*2074---2.25ms*/
+ 245   2          {
+ 246   3            i=1;
+ 247   3          }
+ 248   2          else
+ 249   2          {
+ 250   3            if(state < 34)
+ 251   3            {
+ 252   4              if(g_enable_debug)printf("error span, not 0 or 1, return to 0.\r\n");
+ 253   4              state = 0;
+ 254   4              break;
+ 255   4            }
+ 256   3          }
+ 257   2          if(state<10)
+ 258   2          {
+ 259   3            if(i==1)
+ 260   3            {
+ 261   4              ir_buffer[0] |= 0x01u<<(state-2);
+ 262   4            }
+ 263   3            state++;
+ 264   3          }
+ 265   2          else if(state<18)
+ 266   2          {
+ 267   3            if(i==1)
+ 268   3            {
+ 269   4              ir_buffer[1] |= 0x01u<<(state-10);
+ 270   4            }
+ 271   3            state++;
+ 272   3          }
+ 273   2          else if(state<26)
+ 274   2          {
+ 275   3            if(i==1)
+ 276   3            {
+ 277   4              ir_buffer[2] |= 0x01u<<(state-18);
+ 278   4            }
+ 279   3            state++;
+ 280   3          }
+ 281   2          else if(state<34)
+ 282   2          {
+ 283   3            if(i==1)
+ 284   3            {
+ 285   4              ir_buffer[3] |= 0x01u<<(state-26);
+ 286   4            }
+ 287   3            state++;
+ 288   3            if(state == 34)
+ 289   3            {
+ 290   4              if(ir_buffer[0] == 32 && ir_buffer[1] == 223)
+ 291   4              {
+ 292   5                if(ir_buffer[2] + ir_buffer[3]==255)
+ 293   5                {
+ 294   6                  key_code = IrCodeToKeyCode(ir_buffer[2]);
+ 295   6                  key_InsertKeyCode(key_code, KEY_PRESSED);
+ 296   6                  if(g_enable_debug)printf("ir_code = 0x%bx\r\n",ir_buffer[2]);
+ 297   6                }
+ 298   5              }
+ 299   4              else if(ir_buffer[0] == 0xcc && ir_buffer[1] == 0x1d) /*Zhong Jiu*/
+ 300   4              {
+ 301   5                if(ir_buffer[2] + ir_buffer[3]==255)
+ 302   5                {
+C51 COMPILER V9.50a   IR                                                                   05/17/2019 16:38:38 PAGE 6   
+
+ 303   6                  key_code = IrCodeToKeyCodeZhongJiu(ir_buffer[2]);
+ 304   6                  key_InsertKeyCode(key_code, KEY_PRESSED);
+ 305   6                  if(g_enable_debug) printf("ir_code = 0x%bx\r\n",ir_buffer[2]);
+ 306   6                }
+ 307   5              }
+ 308   4              else 
+ 309   4              {
+ 310   5                /*for debug purpose only.*/
+ 311   5                key_code = IrCodeToKeyCodeZhongJiu(ir_buffer[2]);
+ 312   5                key_InsertKeyCode(key_code, KEY_PRESSED);
+ 313   5                //printf("ir[0]=0x%02bx\r\n",ir_buffer[0]);
+ 314   5                //printf("ir[1]=0x%02bx\r\n",ir_buffer[1]);
+ 315   5                //printf("ir[2]=0x%02bx\r\n",ir_buffer[2]);
+ 316   5                //printf("ir[3]=0x%02bx\r\n",ir_buffer[3]);
+ 317   5              }
+ 318   4              repeat_counter = 0;
+ 319   4            }
+ 320   3          }
+ 321   2          else if(state==34)
+ 322   2          {
+ 323   3            if(span>MIN_11_25MS_TICKS && span<MAX_11_25MS_TICKS) /*10372--11.25 ms*/
+ 324   3            {
+ 325   4              if(g_enable_debug)printf("repeat\r\n");
+ 326   4              repeat_counter++;
+ 327   4              if(repeat_counter>=4)
+ 328   4              {
+ 329   5                if(key_code != KEY_NONE)key_InsertKeyCode(key_code, KEY_REPEATED);
+ 330   5                repeat_counter=2;
+ 331   5              }
+ 332   4            }
+ 333   3            else if(span > MIN_13_5MS_TICKS && span < MAX_13_5MS_TICKS) /*12443 -- 13.5ms*/
+ 334   3            {
+ 335   4              if(g_enable_debug)printf("restart\r\n");
+ 336   4              if(key_code != KEY_NONE)key_InsertKeyCode(key_code, KEY_RELEASED);
+ 337   4              key_code = KEY_NONE;
+ 338   4              ir_buffer[0]=0;
+ 339   4              ir_buffer[1]=0;
+ 340   4              ir_buffer[2]=0;
+ 341   4              ir_buffer[3]=0;
+ 342   4              state = 2;
+ 343   4            }
+ 344   3            else if(span > MIN_96_75MS_TICKS && span < MAX_96_75MS_TICKS) /*88848 -- 96.75ms*/
+ 345   3            {
+ 346   4              if(g_enable_debug)printf("repeat gap.\r\n");
+ 347   4            }
+ 348   3            else if(span > MIN_31_5MS_TICKS && span < MAX_49_5MS_TICKS) /*29043 -- 45639 : 31.5ms -- 49.5ms */
+ 349   3            {
+ 350   4              if(g_enable_debug)printf("start gap.\r\n");
+ 351   4            }
+ 352   3            else
+ 353   3            {
+ 354   4              if(g_enable_debug)printf("impossible here..\r\n");
+ 355   4            }
+ 356   3          }
+ 357   2          break;
+ 358   2        }
+ 359   1      }
+ 360          
+ 361          /*ISR MUST be kept simple.*/
+ 362          void eint0_ISR(void) interrupt 0
+ 363          {
+ 364   1        if( (g_ir_param.head+1) % IR_BUFLEN != g_ir_param.rear )
+C51 COMPILER V9.50a   IR                                                                   05/17/2019 16:38:38 PAGE 7   
+
+ 365   1        {
+ 366   2          extern volatile unsigned int idata g_high_timer;
+ 367   2          TR0 = 0;
+ 368   2          g_ir_param.th0[g_ir_param.head] = TH0;
+ 369   2          g_ir_param.tl0[g_ir_param.head] = TL0;
+ 370   2          g_ir_param.timer[g_ir_param.head] = g_high_timer;
+ 371   2          if(TF0)g_ir_param.timer[g_ir_param.head]++;
+ 372   2          TR0 = 1;
+ 373   2          g_ir_param.head++;
+ 374   2          if(g_ir_param.head >= IR_BUFLEN)
+ 375   2            g_ir_param.head = 0;
+ 376   2        }
+ 377   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   1649    ----
+   CONSTANT SIZE    =    177    ----
+   XDATA SIZE       =    202    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----      14
+   IDATA SIZE       =     15    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

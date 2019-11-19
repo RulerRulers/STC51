@@ -1,0 +1,540 @@
+C51 COMPILER V9.50a   XMODEM                                                               05/17/2019 16:38:39 PAGE 1   
+
+
+C51 COMPILER V9.50a, COMPILATION OF MODULE XMODEM
+OBJECT MODULE PLACED IN .\Objects\xmodem.obj
+COMPILER INVOKED BY: D:\KEIL4\C51\BIN\C51.EXE src\xmodem.c BROWSE DEBUG OBJECTEXTEND PRINT(.\Listings\xmodem.lst) TABS(2
+                    -) OBJECT(.\Objects\xmodem.obj)
+
+line level    source
+
+   1          /*
+   2           * Copyright        : Shendong MCU studio
+   3           * File Description : xmodem protocol implementation
+   4           * Created          : oliverzhang@shendongmcu.com
+   5           */
+   6          #include "global.h"
+   7          
+   8          static uint8_t xdata g_xmodem_crc_mode = 1;
+   9          
+  10          enum{CHAR_SOH=0x01,CHAR_EOT=0x04,CHAR_ACK=0x06,CHAR_NAK=0x15,CHAR_CAN=0x18,CHAR_C=0x43,};
+  11          
+  12          static void WriteFlash(uint32_t addr,uint8_t *buf,uint16_t len)
+  13          {
+  14   1        //uart2_Printf("addr=0x%lu,len=%u\r\n",addr,len);
+  15   1        m25p80_Write(buf,len,addr);
+  16   1      }
+  17          
+  18          static uint8_t PackIsValid(uint8_t *buf,uint8_t packno)
+  19          {
+  20   1        uint8_t i,sum;
+  21   1        uint8_t status = 0;
+  22   1        uint8_t crclow, crchigh;
+  23   1        uint16_t crc;
+  24   1      
+  25   1        //uart2_Printf("~~~~~~~~~~~~~~~~packno = %bu\r\n",packno);
+  26   1        if(buf[0] != CHAR_SOH) 
+  27   1        {
+  28   2          status = 1;
+  29   2          goto errexit;
+  30   2        }
+  31   1        if(packno != buf[1])
+  32   1        {
+  33   2          status = 2;
+  34   2          //uart2_Printf("PackFIALED: buf[1]=%bu,packno=%bu\r\n",buf[1],packno);
+  35   2          goto errexit;
+  36   2        }
+  37   1        if( ((buf[1] + buf[2])&0xff) != 0xff)
+  38   1        {
+  39   2          status = 3;
+  40   2          //uart2_Printf("PackFIALED: buf[1]=0x%bx,buf[2]=0x%bx\r\n",buf[1],buf[2]);
+  41   2          goto errexit;
+  42   2        }
+  43   1      
+  44   1        if(g_xmodem_crc_mode == 0)
+  45   1        {
+  46   2          for(i=0,sum=0;i<128;i++)
+  47   2          {
+  48   3            sum += buf[3+i];
+  49   3          }
+  50   2          if(sum != buf[131])
+  51   2          {
+  52   3            status = 4;
+  53   3            //uart2_Printf("PackFIALED: sum=%bu,buf[131]=bu\r\n",sum,buf[131]);
+  54   3            goto errexit;
+C51 COMPILER V9.50a   XMODEM                                                               05/17/2019 16:38:39 PAGE 2   
+
+  55   3          }
+  56   2          //uart2_Printf("package OK,packno = %bu buf[1]=%bu\r\n",packno,buf[1]);
+  57   2          return 1;
+  58   2        }
+  59   1        else
+  60   1        {
+  61   2          crc = crc_CalcCCITT16NibbleVer(&buf[3],128);
+  62   2          crchigh = crc>>8;
+  63   2          crclow = crc;
+  64   2          if(crchigh == buf[131] && crclow == buf[132])
+  65   2          {
+  66   3            //uart2_Printf("package OK,packno = %bu buf[1]=%bu\r\n",packno,buf[1]);
+  67   3            return 1;
+  68   3          }
+  69   2          else
+  70   2          {
+  71   3            status = 5;
+  72   3            //uart2_Printf("PackFIALED: crc=0x%x,buf[131]=0xbx,buf[132]=0xbx\r\n",sum,buf[131],buf[131]);
+  73   3            goto errexit;
+  74   3          }
+  75   2        }
+  76   1      errexit:
+  77   1        //uart2_Printf("error status = %bu\r\n",status);
+  78   1        return 0;
+  79   1      }
+  80          
+  81          static void SendAck(uint8_t ack, uint8_t debug_id)
+  82          {
+  83   1        debug_id = debug_id;
+  84   1        if(ack == CHAR_ACK)
+  85   1          ;//uart2_Printf("send ACK %bu.\r\n",debug_id);
+  86   1        else if(ack == CHAR_NAK)
+  87   1          ;//uart2_Printf("send NAK %bu.\r\n",debug_id);
+  88   1        else if(ack == CHAR_CAN)
+  89   1          ;//uart2_Printf("send CAN %bu.\r\n",debug_id);
+  90   1        uart1_Write(&ack,1);
+  91   1        time_HoggingDelayMs(20);
+  92   1      }
+  93          
+  94          void xmodem_ReceiveFile(uint32_t addr)
+  95          {
+  96   1        uint8_t state = 0,old_state = 0xff;
+  97   1        uint8_t xdata buf[134];
+  98   1        uint8_t count = 0;
+  99   1        uint32_t oldticks,ticks;
+ 100   1        uint8_t nread;
+ 101   1        uint8_t packno;
+ 102   1        uint8_t retry_count = 0;
+ 103   1        uint8_t packlen;
+ 104   1      
+ 105   1        if( g_xmodem_crc_mode == 0)
+ 106   1          packlen = 132;
+ 107   1        else 
+ 108   1          packlen = 133;
+ 109   1        
+ 110   1        while(1)
+ 111   1        {
+ 112   2          tick_Task();
+ 113   2          ticks = time_GetTicks();
+ 114   2          if(old_state != state)
+ 115   2          {
+ 116   3            old_state = state;
+C51 COMPILER V9.50a   XMODEM                                                               05/17/2019 16:38:39 PAGE 3   
+
+ 117   3            //uart2_Printf("--------------------%bd------------------\r\n",old_state);
+ 118   3          }
+ 119   2          switch(state)
+ 120   2          {
+ 121   3          case 0:
+ 122   3            if(g_xmodem_crc_mode==0)
+ 123   3              SendAck(CHAR_NAK,1);
+ 124   3            else 
+ 125   3              SendAck(CHAR_C,1);
+ 126   3            oldticks = ticks;
+ 127   3            state = 1;
+ 128   3            break;
+ 129   3          case 1:
+ 130   3            if(ticks - oldticks < 3*1000ul)
+ 131   3            {
+ 132   4              nread = uart1_Read(buf,1);
+ 133   4              if(nread == 1)
+ 134   4              {
+ 135   5                if(buf[0] == CHAR_SOH)
+ 136   5                {
+ 137   6                  oldticks = ticks;
+ 138   6                  packno = 1;
+ 139   6                  count = 1;
+ 140   6                  state = 2;
+ 141   6                  break;
+ 142   6                }
+ 143   5              }
+ 144   4              break;
+ 145   4            }
+ 146   3            state = 0;
+ 147   3            break;
+ 148   3          case 2:
+ 149   3            if(ticks - oldticks < 10*1000ul)
+ 150   3            {
+ 151   4              nread = uart1_Read(buf+count,packlen-count);
+ 152   4              count += nread;
+ 153   4              if(count == packlen)
+ 154   4              {
+ 155   5                if(PackIsValid(buf,packno))
+ 156   5                {
+ 157   6                  WriteFlash(addr,buf+3,128);
+ 158   6                  addr += 128;
+ 159   6                  SendAck(CHAR_ACK,2);
+ 160   6                  count = 0;
+ 161   6                  packno++;
+ 162   6                  state = 3;
+ 163   6                  retry_count = 0;
+ 164   6                  oldticks = ticks;
+ 165   6                }
+ 166   5                else
+ 167   5                {
+ 168   6                  retry_count ++;
+ 169   6                  SendAck(CHAR_NAK,3);
+ 170   6                  state = 1;
+ 171   6                  if(retry_count >= 10)
+ 172   6                  {
+ 173   7                    SendAck(CHAR_CAN,4);
+ 174   7                    goto errexit;
+ 175   7                  }
+ 176   6                }
+ 177   5                break;
+ 178   5              }
+C51 COMPILER V9.50a   XMODEM                                                               05/17/2019 16:38:39 PAGE 4   
+
+ 179   4              break;
+ 180   4            }
+ 181   3            SendAck(CHAR_NAK,5);
+ 182   3            retry_count++;
+ 183   3            state = 1;
+ 184   3            if(retry_count >= 10)
+ 185   3            {
+ 186   4              SendAck(CHAR_CAN,6);
+ 187   4              goto errexit;
+ 188   4            }
+ 189   3            break;
+ 190   3          case 3: /*receive next package head.*/
+ 191   3            if(ticks - oldticks < 10*1000ul)
+ 192   3            {
+ 193   4              nread = uart1_Read(buf,1);
+ 194   4              if(nread == 1)
+ 195   4              {
+ 196   5                if(buf[0] == CHAR_SOH)
+ 197   5                {
+ 198   6                  oldticks = ticks;
+ 199   6                  count = 1;
+ 200   6                  state = 4;
+ 201   6                  break;
+ 202   6                }
+ 203   5                else if(buf[0] == CHAR_EOT)
+ 204   5                {
+ 205   6                  SendAck(CHAR_ACK,7);
+ 206   6                  //uart2_Printf("file receive finished ok.\r\n");
+ 207   6                  goto errexit;
+ 208   6                }
+ 209   5              }
+ 210   4              break;
+ 211   4            }
+ 212   3            retry_count++;
+ 213   3            if(retry_count == 10)
+ 214   3            {
+ 215   4              SendAck(CHAR_CAN,8);
+ 216   4              goto errexit;
+ 217   4            }
+ 218   3            SendAck(CHAR_NAK,9);
+ 219   3            oldticks = ticks;
+ 220   3            break;
+ 221   3          case 4: /*receive remained part of next package.*/
+ 222   3            if(ticks - oldticks < 10*1000ul)
+ 223   3            {
+ 224   4              nread = uart1_Read(buf+count,packlen-count);
+ 225   4              count += nread;
+ 226   4              if(count == packlen)
+ 227   4              {
+ 228   5                if(PackIsValid(buf,packno))
+ 229   5                {
+ 230   6                  WriteFlash(addr,buf+3,128);
+ 231   6                  addr += 128;
+ 232   6                  SendAck(CHAR_ACK,10);
+ 233   6                  count = 0;
+ 234   6                  packno++;
+ 235   6                  state = 3;
+ 236   6                  retry_count = 0;
+ 237   6                  oldticks = ticks;
+ 238   6                }
+ 239   5                else
+ 240   5                {
+C51 COMPILER V9.50a   XMODEM                                                               05/17/2019 16:38:39 PAGE 5   
+
+ 241   6                  retry_count ++;
+ 242   6                  SendAck(CHAR_NAK,11);
+ 243   6                  state = 3;
+ 244   6                  if(retry_count >= 10)
+ 245   6                  {
+ 246   7                    SendAck(CHAR_CAN,12);
+ 247   7                    goto errexit;
+ 248   7                  }
+ 249   6                }
+ 250   5                break;
+ 251   5              }
+ 252   4              break;
+ 253   4            }
+ 254   3            SendAck(CHAR_NAK,0);
+ 255   3            retry_count++;
+ 256   3            state = 3;
+ 257   3            if(retry_count >= 10)
+ 258   3            {
+ 259   4              SendAck(CHAR_CAN,0);
+ 260   4              goto errexit;
+ 261   4            }
+ 262   3            break;
+ 263   3          default:
+ 264   3            break;
+ 265   3          }
+ 266   2        }
+ 267   1      errexit:
+ 268   1        return;
+ 269   1      }
+ 270          
+ 271          void xmodem_SendFile(uint32_t addr,uint32_t len)
+ 272          {
+ 273   1        uint8_t state = 0,old_state = 0xff;
+ 274   1        uint8_t xdata buf[134];
+ 275   1        uint8_t i,sum,count = 0;
+ 276   1        uint32_t oldticks,ticks;
+ 277   1        uint8_t nwrite,nread;
+ 278   1        uint8_t packno = 1;
+ 279   1        uint8_t retry_count = 0;
+ 280   1        uint8_t packlen = 132;
+ 281   1        uint8_t crc_mode = 0;
+ 282   1        uint16_t crc;
+ 283   1        while(1)
+ 284   1        {
+ 285   2          tick_Task();
+ 286   2          ticks = time_GetTicks();
+ 287   2          if(old_state != state)
+ 288   2          {
+ 289   3            old_state = state;
+ 290   3            //uart2_Printf("--------------------%bd------------------\r\n",old_state);
+ 291   3          }
+ 292   2          switch(state)
+ 293   2          {
+ 294   3          case 0:
+ 295   3            retry_count =  0;
+ 296   3            oldticks = ticks;
+ 297   3            state = 1;
+ 298   3            break;
+ 299   3          case 1:
+ 300   3            if(ticks - oldticks < 10*1000ul)
+ 301   3            {
+ 302   4              nread = uart1_Read(buf,1);
+C51 COMPILER V9.50a   XMODEM                                                               05/17/2019 16:38:39 PAGE 6   
+
+ 303   4              if(nread == 1)
+ 304   4              {
+ 305   5                if(buf[0] == CHAR_C)
+ 306   5                {
+ 307   6                  crc_mode = 1;
+ 308   6                  state = 2;
+ 309   6                  packlen = 133;
+ 310   6                  packno = 1;
+ 311   6                }
+ 312   5                else if(buf[0] ==  CHAR_NAK)
+ 313   5                {
+ 314   6                  crc_mode = 0;
+ 315   6                  state = 2;
+ 316   6                  packlen = 132;
+ 317   6                  packno = 1;
+ 318   6                }
+ 319   5                else if(buf[0] ==  CHAR_CAN)
+ 320   5                {
+ 321   6                  printf("user cancels communication.\r\n");
+ 322   6                  state = 100;
+ 323   6                }
+ 324   5                else
+ 325   5                {
+ 326   6                  printf("error communication.\r\n");
+ 327   6                  state = 100;
+ 328   6                }
+ 329   5              }
+ 330   4            }
+ 331   3            else 
+ 332   3            {
+ 333   4              oldticks = ticks;
+ 334   4              retry_count++;
+ 335   4              if(retry_count>= 5)
+ 336   4              {
+ 337   5                printf("can not receive response more than 50 second.exit\r\n");
+ 338   5                state = 100;
+ 339   5              }
+ 340   4            }
+ 341   3            break;
+ 342   3          case 2: /*send packets.*/
+ 343   3            if(len == 0)
+ 344   3            {
+ 345   4              SendAck(CHAR_EOT,0);
+ 346   4              retry_count = 0;
+ 347   4              oldticks = ticks;
+ 348   4              state = 4;
+ 349   4            }
+ 350   3            else
+ 351   3            {
+ 352   4              if(len >= 128) nwrite = 128;
+ 353   4              else
+ 354   4              {
+ 355   5                nwrite = len;
+ 356   5                memset(buf,0x1a,sizeof(buf));
+ 357   5              }
+ 358   4              buf[0] = CHAR_SOH;
+ 359   4              buf[1] = packno;
+ 360   4              buf[2] = packno ^ 0xffu;
+ 361   4              m25p80_Read(&buf[3],nwrite,addr);
+ 362   4              if(crc_mode)
+ 363   4              {
+ 364   5                crc = crc_CalcCCITT16NibbleVer(&buf[3],128);
+C51 COMPILER V9.50a   XMODEM                                                               05/17/2019 16:38:39 PAGE 7   
+
+ 365   5                buf[131] = crc >> 8;
+ 366   5                buf[132] = crc;
+ 367   5              }
+ 368   4              else 
+ 369   4              {
+ 370   5                for(i=0,sum=0;i<128;i++)
+ 371   5                {
+ 372   6                  sum += buf[3+i];
+ 373   6                }
+ 374   5                buf[131] = sum;
+ 375   5              }
+ 376   4              uart1_Write(buf,packlen);
+ 377   4              oldticks = ticks;
+ 378   4              retry_count = 10;
+ 379   4              state = 3;
+ 380   4            }
+ 381   3            break;
+ 382   3          case 3: /*check response*/
+ 383   3            if(ticks - oldticks < 10*1000ul)
+ 384   3            {
+ 385   4              nread = uart1_Read(buf,1);
+ 386   4              if(nread == 1)
+ 387   4              {
+ 388   5                if(buf[0] == CHAR_ACK)
+ 389   5                {
+ 390   6                  addr += nwrite;
+ 391   6                  len -= nwrite;
+ 392   6                  packno++;
+ 393   6                  state = 2;
+ 394   6                }
+ 395   5                else if(buf[0] ==  CHAR_NAK)
+ 396   5                {
+ 397   6                  state = 2;
+ 398   6                }
+ 399   5                else if(buf[0] ==  CHAR_CAN)
+ 400   5                {
+ 401   6                  printf("user cancels communication.\r\n");
+ 402   6                  state = 100;
+ 403   6                }
+ 404   5                else
+ 405   5                {
+ 406   6                  printf("error communication.\r\n");
+ 407   6                  state = 100;
+ 408   6                }
+ 409   5              }
+ 410   4            }
+ 411   3            else 
+ 412   3            {
+ 413   4              oldticks = ticks;
+ 414   4              retry_count++;
+ 415   4              if(retry_count>= 5)
+ 416   4              {
+ 417   5                printf("can not receive response more than 50 second.exit\r\n");
+ 418   5                state = 100;
+ 419   5              }
+ 420   4            }
+ 421   3            break;
+ 422   3          case 4: /*Check the last ack.*/
+ 423   3            if(ticks - oldticks < 10*1000ul)
+ 424   3            {
+ 425   4              nread = uart1_Read(buf,1);
+ 426   4              if(nread == 1)
+C51 COMPILER V9.50a   XMODEM                                                               05/17/2019 16:38:39 PAGE 8   
+
+ 427   4              {
+ 428   5                if(buf[0] == CHAR_ACK)
+ 429   5                {
+ 430   6                  state = 100;
+ 431   6                }
+ 432   5                else if(buf[0] ==  CHAR_CAN)
+ 433   5                {
+ 434   6                  printf("user cancels communication.\r\n");
+ 435   6                  state = 100;
+ 436   6                }
+ 437   5                else
+ 438   5                {
+ 439   6                  printf("error communication.\r\n");
+ 440   6                  state = 100;
+ 441   6                }
+ 442   5              }
+ 443   4            }
+ 444   3            else 
+ 445   3            {
+ 446   4              oldticks = ticks;
+ 447   4              retry_count++;
+ 448   4              if(retry_count>= 5)
+ 449   4              {
+ 450   5                printf("can not receive response more than 50 second.exit\r\n");
+ 451   5                state = 100;
+ 452   5              }
+ 453   4            }
+ 454   3            break;
+ 455   3          case 100:
+ 456   3            goto errexit;
+ 457   3            break;
+ 458   3          default:
+ 459   3            break;
+ 460   3          }
+ 461   2        }
+ 462   1        errexit:
+ 463   1        ;
+ 464   1      }
+ 465          
+ 466          void xmodem_Main(uint8_t argc,char *argv[])
+ 467          {
+ 468   1        int32_t addr;
+ 469   1        int32_t len;
+ 470   1      
+ 471   1        if(argc == 1) goto _print_usage_;
+ 472   1        if(strcmp(argv[1],"w") == 0)
+ 473   1        {
+ 474   2          if(argc != 3) goto _print_usage_;
+ 475   2          addr = atol(argv[2]);
+ 476   2          if(addr < 0 || addr > 0xf0000 || (addr & 0xffff)!=0 )goto _print_usage_;
+ 477   2          xmodem_ReceiveFile(addr);
+ 478   2          return;
+ 479   2        }
+ 480   1        else if(strcmp(argv[1],"r") == 0)
+ 481   1        {
+ 482   2          if(argc != 4) goto _print_usage_;
+ 483   2          addr = atol(argv[2]);
+ 484   2          if(addr < 0 || addr > 0xfffff)goto _print_usage_;
+ 485   2          len = atol(argv[3]);
+ 486   2          if(len <= 0)goto _print_usage_;
+ 487   2          xmodem_SendFile(addr,len);
+ 488   2          return;
+C51 COMPILER V9.50a   XMODEM                                                               05/17/2019 16:38:39 PAGE 9   
+
+ 489   2        }
+ 490   1      _print_usage_:
+ 491   1        printf("-----------------usage---------------------\r\n");
+ 492   1        printf("usage: %s w <addr>\r\n",argv[0]);
+ 493   1        printf("to write content to spi flash.\r\n");
+ 494   1        printf("For example: xmodem w 0x10000\r\n");
+ 495   1        printf("addr must be on the boundary of sectors.\r\n");
+ 496   1        
+ 497   1        printf("usage: %s r <addr> <len>\r\n",argv[0]);
+ 498   1        printf("to read content from spi flash.\r\n");
+ 499   1        printf("For example: xmodem r 0x10011 55\r\n");
+ 500   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   2075    ----
+   CONSTANT SIZE    =    380    ----
+   XDATA SIZE       =      1     268
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----      71
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)
